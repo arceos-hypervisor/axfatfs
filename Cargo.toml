@@ -1,10 +1,13 @@
 [package]
 name = "fatfs"
 version = "0.4.0"
-authors = ["Rafał Harabień <rafalh92@outlook.com>"]
+authors = [
+    "Rafał Harabień <rafalh92@outlook.com>",
+    "Josen-B <baiqiaosen@gmail.com>",
+]
 edition = "2021"
 rust-version = "1.65"
-repository = "https://github.com/rafalh/rust-fatfs"
+repository = "https://github.com/arceos-hypervisor/axfatfs"
 readme = "README.md"
 keywords = ["fat", "filesystem", "no_std"]
 categories = ["filesystem"]
@@ -12,9 +15,7 @@ license = "MIT"
 description = """
 FAT filesystem library.
 """
-exclude = [
-    "resources/*",
-]
+exclude = ["resources/*"]
 
 [features]
 # Use Rust std library
@@ -28,9 +29,9 @@ unicode = []
 # Enable only error-level logging
 log_level_error = []
 # Enable logging levels warn and up
-log_level_warn  = ["log_level_error"]
+log_level_warn = ["log_level_error"]
 # Enable logging levels info and up
-log_level_info  = ["log_level_warn"]
+log_level_info = ["log_level_warn"]
 # Enable logging levels debug and up
 log_level_debug = ["log_level_info"]
 # Enable all logging levels: trace and up
@@ -42,7 +43,9 @@ default = ["chrono", "std", "alloc", "lfn", "unicode", "log_level_trace"]
 [dependencies]
 bitflags = { version = "2", default-features = false }
 log = { version = "0.4", default-features = false }
-chrono = { version = "0.4", default-features = false, features = ["clock"], optional = true }
+chrono = { version = "0.4", default-features = false, features = [
+    "clock",
+], optional = true }
 
 [dev-dependencies]
 env_logger = "0.9"

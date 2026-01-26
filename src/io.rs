@@ -290,3 +290,76 @@ impl<T: Write> WriteLeExt for T {
         self.write_all(&n.to_le_bytes())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_seek_from_variants() {
+        let start = SeekFrom::Start(100);
+        assert_eq!(start, SeekFrom::Start(100));
+        assert_ne!(start, SeekFrom::End(-10));
+
+        let end = SeekFrom::End(-50);
+        assert_eq!(end, SeekFrom::End(-50));
+        assert_ne!(end, SeekFrom::Current(10));
+
+        let current = SeekFrom::Current(20);
+        assert_eq!(current, SeekFrom::Current(20));
+        assert_ne!(current, SeekFrom::Start(20));
+    }
+
+    #[test]
+    fn test_seek_from_debug() {
+        assert_eq!(format!("{:?}", SeekFrom::Start(42)), "Start(42)");
+        assert_eq!(format!("{:?}", SeekFrom::End(-10)), "End(-10)");
+        assert_eq!(format!("{:?}", SeekFrom::Current(5)), "Current(5)");
+    }
+
+    #[test]
+    fn test_seek_from_clone_copy() {
+        let start = SeekFrom::Start(100);
+        let cloned = start.clone();
+        assert_eq!(start, cloned);
+
+        let copied = start;
+        assert_eq!(start, copied);
+    }
+
+    #[cfg(feature = "std")]
+    #[test]
+    fn test_seek_from_std_conversion() {
+        let fatfs_seek = SeekFrom::Start(100);
+        let std_seek: std::io::SeekFrom = fatfs_seek.into();
+        assert_eq!(std_seek, std::io::SeekFrom::Start(100));
+
+        let std_seek = std::io::SeekFrom::End(-50);
+        let fatfs_seek: SeekFrom = std_seek.into();
+        assert_eq!(fatfs_seek, SeekFrom::End(-50));
+
+        let fatfs_seek = SeekFrom::Current(20);
+        let std_seek: std::io::SeekFrom = fatfs_seek.into();
+        assert_eq!(std_seek, std::io::SeekFrom::Current(20));
+    }
+
+    #[cfg(feature = "std")]
+    #[test]
+    fn test_std_io_wrapper() {
+        let mut cursor = std::io::Cursor::new(vec![0u8; 100]);
+        let wrapper = StdIoWrapper::new(&mut cursor);
+
+        // Test IoBase
+        let inner = wrapper.into_inner();
+        let wrapper2 = StdIoWrapper::new(inner);
+        let _inner = wrapper2.into_inner();
+    }
+
+    #[cfg(feature = "std")]
+    #[test]
+    fn test_std_io_wrapper_from() {
+        let cursor = std::io::Cursor::new(vec![0u8; 100]);
+        let wrapper: StdIoWrapper<_> = StdIoWrapper::from(cursor);
+        assert_eq!(wrapper.into_inner().into_inner().len(), 100);
+    }
+}

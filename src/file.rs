@@ -27,9 +27,9 @@ pub struct File<'a, IO: ReadWriteSeek, TP, OCC> {
 /// An extent containing a file's data on disk.
 ///
 /// This is created by the `extents` method on `File`, and represents
-/// a byte range on the disk that contains a file's data. All values
+/// a byte range on disk that contains a file's data. All values
 /// are in bytes.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Extent {
     pub offset: u64,
     pub size: u32,
@@ -474,5 +474,102 @@ where
 {
     fn seek(&mut self, pos: std::io::SeekFrom) -> std::io::Result<u64> {
         Ok(Seek::seek(self, pos.into())?)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_extent_creation() {
+        let extent = Extent {
+            offset: 1024,
+            size: 512,
+        };
+        assert_eq!(extent.offset, 1024);
+        assert_eq!(extent.size, 512);
+    }
+
+    #[test]
+    fn test_extent_equality() {
+        let extent1 = Extent {
+            offset: 2048,
+            size: 1024,
+        };
+        let extent2 = Extent {
+            offset: 2048,
+            size: 1024,
+        };
+        assert_eq!(extent1, extent2);
+
+        let extent3 = Extent {
+            offset: 4096,
+            size: 1024,
+        };
+        assert_ne!(extent1, extent3);
+    }
+
+    #[test]
+    fn test_extent_clone() {
+        let extent1 = Extent {
+            offset: 3072,
+            size: 2048,
+        };
+        let extent2 = extent1.clone();
+        assert_eq!(extent1, extent2);
+    }
+
+    #[test]
+    fn test_extent_debug() {
+        let extent = Extent {
+            offset: 4096,
+            size: 2048,
+        };
+        let debug_str = format!("{:?}", extent);
+        assert!(debug_str.contains("4096"));
+        assert!(debug_str.contains("2048"));
+    }
+
+    #[test]
+    fn test_extent_zero_size() {
+        let extent = Extent {
+            offset: 0,
+            size: 0,
+        };
+        assert_eq!(extent.offset, 0);
+        assert_eq!(extent.size, 0);
+    }
+
+    #[test]
+    fn test_extent_max_values() {
+        let extent = Extent {
+            offset: u64::MAX,
+            size: u32::MAX,
+        };
+        assert_eq!(extent.offset, u64::MAX);
+        assert_eq!(extent.size, u32::MAX);
+    }
+
+    #[test]
+    fn test_extent_multiple_extents() {
+        let extents = vec![
+            Extent {
+                offset: 1024,
+                size: 512,
+            },
+            Extent {
+                offset: 2048,
+                size: 1024,
+            },
+            Extent {
+                offset: 4096,
+                size: 2048,
+            },
+        ];
+
+        assert_eq!(extents.len(), 3);
+        assert_eq!(extents[0].offset, 1024);
+        assert_eq!(extents[2].size, 2048);
     }
 }

@@ -623,7 +623,7 @@ impl<IO: Read + Write + Seek, TP, OCC> FileSystem<IO, TP, OCC> {
     }
 
     /// Returns a root directory object allowing for futher penetration of a filesystem structure.
-    pub fn root_dir(&self) -> Dir<IO, TP, OCC> {
+    pub fn root_dir(&self) -> Dir<'_, IO, TP, OCC> {
         trace!("root_dir");
         let root_rdr = {
             match self.fat_type {
@@ -1262,4 +1262,263 @@ pub fn format_volume<S: ReadWriteSeek>(storage: &mut S, options: FormatVolumeOpt
     storage.seek(SeekFrom::Start(0))?;
     trace!("format_volume end");
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_fat_type_from_clusters() {
+        assert_eq!(FatType::from_clusters(1000), FatType::Fat12);
+        assert_eq!(FatType::from_clusters(4084), FatType::Fat12);
+        assert_eq!(FatType::from_clusters(4085), FatType::Fat16);
+        assert_eq!(FatType::from_clusters(50000), FatType::Fat16);
+        assert_eq!(FatType::from_clusters(65524), FatType::Fat16);
+        assert_eq!(FatType::from_clusters(65525), FatType::Fat32);
+        assert_eq!(FatType::from_clusters(100000), FatType::Fat32);
+    }
+
+    #[test]
+    fn test_fat_type_bits_per_fat_entry() {
+        assert_eq!(FatType::Fat12.bits_per_fat_entry(), 12);
+        assert_eq!(FatType::Fat16.bits_per_fat_entry(), 16);
+        assert_eq!(FatType::Fat32.bits_per_fat_entry(), 32);
+    }
+
+    #[test]
+    fn test_fat_type_min_clusters() {
+        assert_eq!(FatType::Fat12.min_clusters(), 0);
+        assert_eq!(FatType::Fat16.min_clusters(), 4085);
+        assert_eq!(FatType::Fat32.min_clusters(), 65525);
+    }
+
+    #[test]
+    fn test_fat_type_max_clusters() {
+        assert_eq!(FatType::Fat12.max_clusters(), 4084);
+        assert_eq!(FatType::Fat16.max_clusters(), 65524);
+        assert_eq!(FatType::Fat32.max_clusters(), 0x0FFF_FFF4);
+    }
+
+    #[test]
+    fn test_fs_status_flags_default() {
+        let flags = FsStatusFlags {
+            dirty: false,
+            io_error: false,
+        };
+        assert!(!flags.dirty());
+        assert!(!flags.io_error());
+    }
+
+    #[test]
+    fn test_fs_status_flags_dirty() {
+        let flags = FsStatusFlags {
+            dirty: true,
+            io_error: false,
+        };
+        assert!(flags.dirty());
+        assert!(!flags.io_error());
+    }
+
+    #[test]
+    fn test_fs_status_flags_io_error() {
+        let flags = FsStatusFlags {
+            dirty: false,
+            io_error: true,
+        };
+        assert!(!flags.dirty());
+        assert!(flags.io_error());
+    }
+
+    #[test]
+    fn test_fs_status_flags_both() {
+        let flags = FsStatusFlags {
+            dirty: true,
+            io_error: true,
+        };
+        assert!(flags.dirty());
+        assert!(flags.io_error());
+    }
+
+    #[test]
+    fn test_fs_status_flags_encode() {
+        let flags1 = FsStatusFlags {
+            dirty: false,
+            io_error: false,
+        };
+        assert_eq!(flags1.encode(), 0);
+
+        let flags2 = FsStatusFlags {
+            dirty: true,
+            io_error: false,
+        };
+        assert_eq!(flags2.encode(), 1);
+
+        let flags3 = FsStatusFlags {
+            dirty: false,
+            io_error: true,
+        };
+        assert_eq!(flags3.encode(), 2);
+
+        let flags4 = FsStatusFlags {
+            dirty: true,
+            io_error: true,
+        };
+        assert_eq!(flags4.encode(), 3);
+    }
+
+    #[test]
+    fn test_fs_status_flags_decode() {
+        let flags0 = FsStatusFlags::decode(0);
+        assert!(!flags0.dirty());
+        assert!(!flags0.io_error());
+
+        let flags1 = FsStatusFlags::decode(1);
+        assert!(flags1.dirty());
+        assert!(!flags1.io_error());
+
+        let flags2 = FsStatusFlags::decode(2);
+        assert!(!flags2.dirty());
+        assert!(flags2.io_error());
+
+        let flags3 = FsStatusFlags::decode(3);
+        assert!(flags3.dirty());
+        assert!(flags3.io_error());
+    }
+
+    #[test]
+    fn test_fs_status_flags_roundtrip() {
+        let flags = FsStatusFlags {
+            dirty: true,
+            io_error: true,
+        };
+        let encoded = flags.encode();
+        let decoded = FsStatusFlags::decode(encoded);
+        assert_eq!(decoded.dirty(), flags.dirty());
+        assert_eq!(decoded.io_error(), flags.io_error());
+    }
+
+    #[test]
+    fn test_fs_options_new() {
+        let options = FsOptions::new();
+        assert!(!options.update_accessed_date);
+        assert!(options.strict);
+    }
+
+    #[test]
+    fn test_fs_options_update_accessed_date() {
+        let options = FsOptions::new().update_accessed_date(true);
+        assert!(options.update_accessed_date);
+
+        let options = options.update_accessed_date(false);
+        assert!(!options.update_accessed_date);
+    }
+
+    #[test]
+    fn test_fs_options_strict() {
+        let options = FsOptions::new().strict(false);
+        assert!(!options.strict);
+
+        let options = options.strict(true);
+        assert!(options.strict);
+    }
+
+    #[test]
+    fn test_fs_stats_cluster_size() {
+        let stats = FileSystemStats {
+            cluster_size: 4096,
+            total_clusters: 1000,
+            free_clusters: 500,
+        };
+        assert_eq!(stats.cluster_size(), 4096);
+    }
+
+    #[test]
+    fn test_fs_stats_total_clusters() {
+        let stats = FileSystemStats {
+            cluster_size: 4096,
+            total_clusters: 10000,
+            free_clusters: 5000,
+        };
+        assert_eq!(stats.total_clusters(), 10000);
+    }
+
+    #[test]
+    fn test_fs_stats_free_clusters() {
+        let stats = FileSystemStats {
+            cluster_size: 4096,
+            total_clusters: 10000,
+            free_clusters: 5000,
+        };
+        assert_eq!(stats.free_clusters(), 5000);
+    }
+
+    #[test]
+    fn test_fs_stats_equality() {
+        let stats1 = FileSystemStats {
+            cluster_size: 4096,
+            total_clusters: 1000,
+            free_clusters: 500,
+        };
+        let stats2 = FileSystemStats {
+            cluster_size: 4096,
+            total_clusters: 1000,
+            free_clusters: 500,
+        };
+        assert_eq!(stats1, stats2);
+
+        let stats3 = FileSystemStats {
+            cluster_size: 2048,
+            total_clusters: 1000,
+            free_clusters: 500,
+        };
+        assert_ne!(stats1, stats3);
+    }
+
+    #[test]
+    fn test_fs_stats_clone() {
+        let stats1 = FileSystemStats {
+            cluster_size: 8192,
+            total_clusters: 2000,
+            free_clusters: 1000,
+        };
+        let stats2 = stats1.clone();
+        assert_eq!(stats1, stats2);
+    }
+
+    #[test]
+    fn test_fs_stats_copy() {
+        let stats1 = FileSystemStats {
+            cluster_size: 512,
+            total_clusters: 100,
+            free_clusters: 50,
+        };
+        let stats2 = stats1;
+        assert_eq!(stats1, stats1);
+        assert_eq!(stats2.cluster_size(), 512);
+    }
+
+    #[test]
+    fn test_fs_stats_used_clusters() {
+        let stats = FileSystemStats {
+            cluster_size: 4096,
+            total_clusters: 10000,
+            free_clusters: 3000,
+        };
+        let used = stats.total_clusters() - stats.free_clusters();
+        assert_eq!(used, 7000);
+    }
+
+    #[test]
+    fn test_fs_stats_debug() {
+        let stats = FileSystemStats {
+            cluster_size: 4096,
+            total_clusters: 10000,
+            free_clusters: 3000,
+        };
+        let debug_str = format!("{:?}", stats);
+        assert!(debug_str.contains("4096"));
+        assert!(debug_str.contains("10000"));
+        assert!(debug_str.contains("3000"));
+    }
 }

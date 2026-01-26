@@ -149,6 +149,116 @@ impl IoError for () {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_io_error_unit() {
+        assert!(!().is_interrupted());
+        let _: () = <() as IoError>::new_unexpected_eof_error();
+        let _: () = <() as IoError>::new_write_zero_error();
+    }
+
+    #[test]
+    fn test_io_error_wrapper() {
+        let inner = std::io::Error::new(std::io::ErrorKind::Interrupted, "interrupted");
+        let error = Error::Io(inner);
+        assert!(error.is_interrupted());
+
+        let inner = std::io::Error::new(std::io::ErrorKind::NotFound, "not found");
+        let error = Error::Io(inner);
+        assert!(!error.is_interrupted());
+    }
+
+    #[cfg(feature = "std")]
+    #[test]
+    fn test_error_into_std_io_error() {
+        let error = Error::<std::io::Error>::UnexpectedEof;
+        let std_error: std::io::Error = error.into();
+        assert_eq!(std_error.kind(), std::io::ErrorKind::UnexpectedEof);
+
+        let error = Error::<std::io::Error>::WriteZero;
+        let std_error: std::io::Error = error.into();
+        assert_eq!(std_error.kind(), std::io::ErrorKind::WriteZero);
+
+        let error = Error::<std::io::Error>::InvalidInput;
+        let std_error: std::io::Error = error.into();
+        assert_eq!(std_error.kind(), std::io::ErrorKind::InvalidInput);
+
+        let error = Error::<std::io::Error>::NotFound;
+        let std_error: std::io::Error = error.into();
+        assert_eq!(std_error.kind(), std::io::ErrorKind::NotFound);
+
+        let error = Error::<std::io::Error>::AlreadyExists;
+        let std_error: std::io::Error = error.into();
+        assert_eq!(std_error.kind(), std::io::ErrorKind::AlreadyExists);
+
+        let error = Error::<std::io::Error>::CorruptedFileSystem;
+        let std_error: std::io::Error = error.into();
+        assert_eq!(std_error.kind(), std::io::ErrorKind::InvalidData);
+    }
+
+    #[cfg(feature = "std")]
+    #[test]
+    fn test_error_source() {
+        use std::error::Error as StdError;
+
+        let inner = std::io::Error::new(std::io::ErrorKind::NotFound, "test");
+        let error = Error::Io(inner);
+        assert!(StdError::source(&error).is_some());
+
+        let error = Error::<std::io::Error>::NotFound;
+        assert!(StdError::source(&error).is_none());
+    }
+
+    #[cfg(feature = "std")]
+    #[test]
+    fn test_io_error_std() {
+        use std::io::{Error, ErrorKind};
+
+        let error = Error::new(ErrorKind::Interrupted, "interrupted");
+        assert!(error.is_interrupted());
+
+        let error = Error::new(ErrorKind::NotFound, "not found");
+        assert!(!error.is_interrupted());
+
+        let error = Error::new_unexpected_eof_error();
+        assert_eq!(error.kind(), ErrorKind::UnexpectedEof);
+
+        let error = Error::new_write_zero_error();
+        assert_eq!(error.kind(), ErrorKind::WriteZero);
+    }
+
+    #[cfg(feature = "std")]
+    #[test]
+    fn test_error_display_with_std_error() {
+        assert_eq!(format!("{}", Error::<std::io::Error>::UnexpectedEof), "Unexpected end of file");
+        assert_eq!(format!("{}", Error::<std::io::Error>::NotEnoughSpace), "Not enough space");
+        assert_eq!(format!("{}", Error::<std::io::Error>::WriteZero), "Write zero");
+        assert_eq!(format!("{}", Error::<std::io::Error>::InvalidInput), "Invalid input");
+        assert_eq!(format!("{}", Error::<std::io::Error>::InvalidFileNameLength), "Invalid file name length");
+        assert_eq!(
+            format!("{}", Error::<std::io::Error>::UnsupportedFileNameCharacter),
+            "Unsupported file name character"
+        );
+        assert_eq!(format!("{}", Error::<std::io::Error>::DirectoryIsNotEmpty), "Directory is not empty");
+        assert_eq!(format!("{}", Error::<std::io::Error>::NotFound), "No such file or directory");
+        assert_eq!(format!("{}", Error::<std::io::Error>::AlreadyExists), "File or directory already exists");
+        assert_eq!(format!("{}", Error::<std::io::Error>::CorruptedFileSystem), "Corrupted file system");
+    }
+
+    #[cfg(feature = "std")]
+    #[test]
+    fn test_error_io_display_with_std_error() {
+        let io_error = std::io::Error::new(std::io::ErrorKind::NotFound, "test");
+        assert_eq!(
+            format!("{}", Error::<std::io::Error>::Io(io_error)),
+            "IO error: test"
+        );
+    }
+}
+
 #[cfg(feature = "std")]
 impl IoError for std::io::Error {
     fn is_interrupted(&self) -> bool {
