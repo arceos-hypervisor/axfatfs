@@ -27,10 +27,16 @@ use crate::time::{DefaultTimeProvider, TimeProvider};
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub enum FatType {
     /// 12 bits per FAT entry
+    ///
+    /// Maximum volume size: approximately 16MB
     Fat12,
     /// 16 bits per FAT entry
+    ///
+    /// Maximum volume size: approximately 2GB
     Fat16,
     /// 32 bits per FAT entry
+    ///
+    /// Maximum volume size: approximately 2TB
     Fat32,
 }
 
@@ -879,7 +885,30 @@ impl<B, S: IoBase> Seek for DiskSlice<B, S> {
 /// Provides a custom implementation for a short name encoding/decoding.
 /// `OemCpConverter` is specified by the `oem_cp_converter` property in `FsOptions` struct.
 pub trait OemCpConverter: Debug {
+    /// Decodes an OEM code page byte to a Unicode character.
+    ///
+    /// # Arguments
+    ///
+    /// * `oem_char` - A byte from OEM code page
+    ///
+    /// # Returns
+    ///
+    /// The corresponding Unicode character
     fn decode(&self, oem_char: u8) -> char;
+
+    /// Encodes a Unicode character to OEM code page byte.
+    ///
+    /// If the character cannot be represented in the OEM code page, this method
+    /// should return `None`.
+    ///
+    /// # Arguments
+    ///
+    /// * `uni_char` - A Unicode character
+    ///
+    /// # Returns
+    ///
+    /// * `Some(byte)` - The OEM code page byte representing this character
+    /// * `None` - The character cannot be represented in this code page
     fn encode(&self, uni_char: char) -> Option<u8>;
 }
 
@@ -890,6 +919,7 @@ pub struct LossyOemCpConverter {
 }
 
 impl LossyOemCpConverter {
+    /// Creates a new `LossyOemCpConverter` instance.
     #[must_use]
     pub fn new() -> Self {
         Self { _dummy: () }

@@ -29,9 +29,9 @@ pub struct Date {
 impl Date {
     /// Creates a new `Date` instance.
     ///
-    /// * `year` - full year number in the range [1980, 2107]
-    /// * `month` - month of the year in the range [1, 12]
-    /// * `day` - a day of the month in the range [1, 31]
+    /// * `year` - Full year number in the range [1980, 2107]
+    /// * `month` - Month of the year in the range [1, 12]
+    /// * `day` - A day of the month in the range [1, 31]
     ///
     /// # Panics
     ///
@@ -120,11 +120,13 @@ pub struct DateTime {
 }
 
 impl DateTime {
+    /// Creates a new `DateTime` instance from a date and time.
     #[must_use]
     pub fn new(date: Date, time: Time) -> Self {
         Self { date, time }
     }
 
+    /// Decodes a DOS date and time into a `DateTime` instance.
     pub(crate) fn decode(dos_date: u16, dos_time: u16, dos_time_hi_res: u8) -> Self {
         Self::new(Date::decode(dos_date), Time::decode(dos_time, dos_time_hi_res))
     }
@@ -187,7 +189,24 @@ impl From<chrono::NaiveDateTime> for DateTime {
 /// Provides a custom implementation for a time resolution used when updating directory entry time fields.
 /// `TimeProvider` is specified by the `time_provider` property in `FsOptions` struct.
 pub trait TimeProvider: Debug {
+    /// Returns the current date.
+    ///
+    /// This method is called when updating directory entry date fields that only
+    /// store date (e.g., last access date).
+    ///
+    /// # Returns
+    ///
+    /// The current date as a `Date`.
     fn get_current_date(&self) -> Date;
+
+    /// Returns the current date and time.
+    ///
+    /// This method is called when updating directory entry timestamp fields that
+    /// store both date and time (e.g., creation time, modification time).
+    ///
+    /// # Returns
+    ///
+    /// The current date and time as a `DateTime`.
     fn get_current_date_time(&self) -> DateTime;
 }
 
@@ -200,6 +219,7 @@ pub struct ChronoTimeProvider {
 
 #[cfg(feature = "chrono")]
 impl ChronoTimeProvider {
+    /// Creates a new `ChronoTimeProvider` instance.
     #[must_use]
     pub fn new() -> Self {
         Self { _dummy: () }

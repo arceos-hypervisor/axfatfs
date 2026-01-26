@@ -1,3 +1,14 @@
+//! FAT Boot Sector module.
+//!
+//! This module contains structures and functions for reading, writing, and validating
+//! the FAT filesystem boot sector (BIOS Parameter Block).
+//!
+//! # Note
+//!
+//! This module is intended for internal use only. The public API for FAT filesystem
+//! operations is provided through the [`FileSystem`](crate::FileSystem) type.
+#![doc(hidden)]
+
 use core::slice;
 
 use crate::dir_entry::DIR_ENTRY_SIZE;

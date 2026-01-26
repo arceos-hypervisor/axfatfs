@@ -1,6 +1,8 @@
-/// Error enum with all errors that can be returned by functions from this crate
+/// Error enum with all errors that can be returned by functions from this crate.
 ///
-/// Generic parameter `T` is a type of external error returned by the user provided storage
+/// This enum represents all possible errors that can occur when performing
+/// operations on a FAT filesystem.
+
 #[derive(Debug)]
 #[non_exhaustive]
 pub enum Error<T> {
@@ -85,8 +87,34 @@ impl<T: std::error::Error + 'static> std::error::Error for Error<T> {
 ///
 /// Implementations for `std::io::Error` and `()` are provided by this crate.
 pub trait IoError: core::fmt::Debug {
+    /// Checks if an operation was interrupted.
+    ///
+    /// Returns `true` if the error indicates that an operation was interrupted,
+    /// typically allowing for the operation to be retried.
+    ///
+    /// # Returns
+    ///
+    /// `true` if this is an interruption error, `false` otherwise.
     fn is_interrupted(&self) -> bool;
+
+    /// Creates a new error representing unexpected end of file.
+    ///
+    /// This is used internally by the library when a read operation fails to
+    /// read the expected number of bytes.
+    ///
+    /// # Returns
+    ///
+    /// A new instance of the error type.
     fn new_unexpected_eof_error() -> Self;
+
+    /// Creates a new error representing a write operation that wrote zero bytes.
+    ///
+    /// This is used internally by the library when a write operation fails to
+    /// write any bytes to storage.
+    ///
+    /// # Returns
+    ///
+    /// A new instance of the error type.
     fn new_write_zero_error() -> Self;
 }
 

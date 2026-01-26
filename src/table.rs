@@ -1,3 +1,14 @@
+//! FAT Table module.
+//!
+//! This module contains structures and functions for reading, writing, and managing
+//! the File Allocation Table (FAT) used in FAT filesystems.
+//!
+//! # Note
+//!
+//! This module is intended for internal use only. The public API for FAT filesystem
+//! operations is provided through the [`FileSystem`](crate::FileSystem) type.
+#![doc(hidden)]
+
 use core::borrow::BorrowMut;
 use core::marker::PhantomData;
 
