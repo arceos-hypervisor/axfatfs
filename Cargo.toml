@@ -1,18 +1,20 @@
 [package]
 name = "axfatfs"
-version = "0.4.0"
+version = "0.1.0-pre.0"
+edition = "2021"
+description = "FAT filesystem library."
 authors = [
     "Rafał Harabień <rafalh92@outlook.com>",
     "Josen-B <baiqiaosen@gmail.com>",
 ]
-edition = "2021"
-rust-version = "1.65"
-description = "FAT filesystem library."
-repository = "https://github.com/arceos-hypervisor/axfatfs/tree/dev"
+repository = "https://github.com/arceos-hypervisor/axfatfs/"
+homepage = "https://github.com/arceos-hypervisor/axfatfs/"
+documentation = "https://arceos-hypervisor.github.io/axfatfs/"
+license = "MIT"
 readme = "README.md"
 keywords = ["fat", "filesystem", "no_std"]
 categories = ["filesystem"]
-license = "MIT"
+rust-version = "1.65"
 exclude = ["resources/*"]
 
 [features]
