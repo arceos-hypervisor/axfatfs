@@ -543,15 +543,13 @@ fn test_rename_edge_cases(fs: FileSystem) {
     // Create file
     let mut file = root_dir.create_file("test_rename.txt").unwrap();
     file.write_all(TEST_STR.as_bytes()).unwrap();
-    file.flush().unwrap();  // Ensure data is written to disk
+    file.flush().unwrap(); // Ensure data is written to disk
 
     // Close file
     drop(file);
 
     // Rename to different directory
-    root_dir
-        .rename("test_rename.txt", &target_dir, "renamed.txt")
-        .unwrap();
+    root_dir.rename("test_rename.txt", &target_dir, "renamed.txt").unwrap();
 
     // Verify original location does not exist
     assert!(root_dir.open_file("test_rename.txt").is_err());

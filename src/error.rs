@@ -233,29 +233,47 @@ mod tests {
     #[cfg(feature = "std")]
     #[test]
     fn test_error_display_with_std_error() {
-        assert_eq!(format!("{}", Error::<std::io::Error>::UnexpectedEof), "Unexpected end of file");
-        assert_eq!(format!("{}", Error::<std::io::Error>::NotEnoughSpace), "Not enough space");
+        assert_eq!(
+            format!("{}", Error::<std::io::Error>::UnexpectedEof),
+            "Unexpected end of file"
+        );
+        assert_eq!(
+            format!("{}", Error::<std::io::Error>::NotEnoughSpace),
+            "Not enough space"
+        );
         assert_eq!(format!("{}", Error::<std::io::Error>::WriteZero), "Write zero");
         assert_eq!(format!("{}", Error::<std::io::Error>::InvalidInput), "Invalid input");
-        assert_eq!(format!("{}", Error::<std::io::Error>::InvalidFileNameLength), "Invalid file name length");
+        assert_eq!(
+            format!("{}", Error::<std::io::Error>::InvalidFileNameLength),
+            "Invalid file name length"
+        );
         assert_eq!(
             format!("{}", Error::<std::io::Error>::UnsupportedFileNameCharacter),
             "Unsupported file name character"
         );
-        assert_eq!(format!("{}", Error::<std::io::Error>::DirectoryIsNotEmpty), "Directory is not empty");
-        assert_eq!(format!("{}", Error::<std::io::Error>::NotFound), "No such file or directory");
-        assert_eq!(format!("{}", Error::<std::io::Error>::AlreadyExists), "File or directory already exists");
-        assert_eq!(format!("{}", Error::<std::io::Error>::CorruptedFileSystem), "Corrupted file system");
+        assert_eq!(
+            format!("{}", Error::<std::io::Error>::DirectoryIsNotEmpty),
+            "Directory is not empty"
+        );
+        assert_eq!(
+            format!("{}", Error::<std::io::Error>::NotFound),
+            "No such file or directory"
+        );
+        assert_eq!(
+            format!("{}", Error::<std::io::Error>::AlreadyExists),
+            "File or directory already exists"
+        );
+        assert_eq!(
+            format!("{}", Error::<std::io::Error>::CorruptedFileSystem),
+            "Corrupted file system"
+        );
     }
 
     #[cfg(feature = "std")]
     #[test]
     fn test_error_io_display_with_std_error() {
         let io_error = std::io::Error::new(std::io::ErrorKind::NotFound, "test");
-        assert_eq!(
-            format!("{}", Error::<std::io::Error>::Io(io_error)),
-            "IO error: test"
-        );
+        assert_eq!(format!("{}", Error::<std::io::Error>::Io(io_error)), "IO error: test");
     }
 }
 
