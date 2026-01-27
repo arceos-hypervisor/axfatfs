@@ -42,7 +42,7 @@
 //! ```
 
 #![crate_type = "lib"]
-#![crate_name = "fatfs"]
+#![crate_name = "axfatfs"]
 #![cfg_attr(not(feature = "std"), no_std)]
 // Disable warnings to not clutter code with cfg too much
 #![cfg_attr(not(all(feature = "alloc", feature = "lfn")), allow(dead_code, unused_imports))]
