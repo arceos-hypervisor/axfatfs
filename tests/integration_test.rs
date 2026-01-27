@@ -456,10 +456,7 @@ fn test_cross_platform_read(filename: &str, test_seq: u32) {
         let mut file = root_dir.open_file("cross_platform_test.txt").unwrap();
         let mut buf = Vec::new();
         file.read_to_end(&mut buf).unwrap();
-        assert_eq!(
-            str::from_utf8(&buf).unwrap(),
-            "Cross-platform test content - appended"
-        );
+        assert_eq!(str::from_utf8(&buf).unwrap(), "Cross-platform test content - appended");
     }
 
     cleanup_tmp_img(&tmp_path);
@@ -486,9 +483,7 @@ fn test_various_file_sizes(filename: &str, test_seq: u32) {
     let fs = open_filesystem_rw(&tmp_path);
     let root_dir = fs.root_dir();
 
-    let sizes: Vec<usize> = vec![
-        0, 1, 100, 1024, 4096, 16384, 65536, 102400,
-    ];
+    let sizes: Vec<usize> = vec![0, 1, 100, 1024, 4096, 16384, 65536, 102400];
 
     for (i, size) in sizes.iter().enumerate() {
         let file_name = format!("size_{}.dat", i);

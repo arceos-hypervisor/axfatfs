@@ -533,10 +533,7 @@ mod tests {
 
     #[test]
     fn test_extent_zero_size() {
-        let extent = Extent {
-            offset: 0,
-            size: 0,
-        };
+        let extent = Extent { offset: 0, size: 0 };
         assert_eq!(extent.offset, 0);
         assert_eq!(extent.size, 0);
     }
