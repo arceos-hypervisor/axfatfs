@@ -3,8 +3,8 @@ name: Release
 on:
   push:
     tags:
-      - 'v*'
-      - 'v*-pre.*'
+      - 'v*.*.*'
+      - 'v*.*.*-pre.*'
 
 permissions:
   contents: write
@@ -12,6 +12,10 @@ permissions:
 jobs:
   check:
     uses: ./.github/workflows/check.yml
+
+  test:
+    uses: ./.github/workflows/test.yml
+    needs: check
 
   create-release:
     name: Create GitHub Release
@@ -64,8 +68,8 @@ jobs:
           body: |
             ## ${{ github.ref_name }}
 
-            - [Documentation](https://docs.rs/phytium-mci)
-            - [crates.io](https://crates.io/crates/phytium-mci)
+            - [Documentation](https://docs.rs/axfatfs)
+            - [crates.io](https://crates.io/crates/axfatfs)
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
