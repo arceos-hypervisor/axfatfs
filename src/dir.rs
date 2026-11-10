@@ -217,6 +217,83 @@ impl<'a, IO: ReadWriteSeek, TP: TimeProvider, OCC: OemCpConverter> Dir<'a, IO, T
         }
     }
 
+    /// Writes cached parent-entry metadata without a final storage flush.
+    ///
+    /// The fixed root has no parent entry to write. Underlying seeks may still
+    /// flush IO; use [`Self::flush`] to request storage persistence explicitly.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Io`] if the storage fails to seek or write the entry.
+    pub fn flush_metadata(&mut self) -> Result<(), Error<IO::Error>> {
+        match &mut self.stream {
+            DirRawStream::File(file) => file.flush_metadata(),
+            DirRawStream::Root(_) => Ok(()),
+        }
+    }
+
+    /// Flushes this directory's cached entry and the filesystem storage buffer.
+    ///
+    /// # Errors
+    ///
+    /// Returns storage write or flush errors, including a fixed-root partial block.
+    pub fn flush(&mut self) -> Result<(), Error<IO::Error>> {
+        self.stream.flush()
+    }
+
+    /// Returns this directory's parent slot, or None for root/detached inodes.
+    #[must_use]
+    pub fn entry_position(&self) -> Option<u64> {
+        match &self.stream {
+            DirRawStream::File(file) => file.entry_position(),
+            DirRawStream::Root(_) => None,
+        }
+    }
+
+    /// Returns whether this non-root directory was unlinked.
+    #[must_use]
+    pub fn is_detached(&self) -> bool {
+        match &self.stream {
+            DirRawStream::File(file) => file.is_detached(),
+            DirRawStream::Root(_) => false,
+        }
+    }
+
+    /// Detaches a removed directory's parent slot while retaining its data.
+    pub fn detach(&mut self) {
+        if let DirRawStream::File(file) = &mut self.stream {
+            file.detach();
+        }
+    }
+
+    /// Binds a directory to the entry returned after metadata writeout and rename.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::InvalidInput`] for a root handle, a non-directory entry,
+    /// a different filesystem, or a different cluster chain.
+    pub fn attach(&mut self, entry: &DirEntry<'_, IO, TP, OCC>) -> Result<(), Error<IO::Error>> {
+        match &mut self.stream {
+            DirRawStream::File(file) if entry.is_dir() => file.attach(entry),
+            _ => Err(Error::InvalidInput),
+        }
+    }
+
+    /// Reclaims an unlinked directory on final eviction.
+    ///
+    /// Call only after all references to this directory have been retired.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::InvalidInput`] for a linked directory or root, or
+    /// propagates storage errors while reclaiming the cluster chain.
+    pub fn purge(&mut self) -> Result<(), Error<IO::Error>> {
+        match &mut self.stream {
+            DirRawStream::File(file) => file.purge(),
+            DirRawStream::Root(_) => Err(Error::InvalidInput),
+        }
+    }
+
     /// Opens existing file.
     ///
     /// `path` is a '/' separated file path relative to self directory.
@@ -355,12 +432,30 @@ impl<'a, IO: ReadWriteSeek, TP: TimeProvider, OCC: OemCpConverter> Dir<'a, IO, T
     /// * `Error::DirectoryIsNotEmpty` will be returned if the specified directory is not empty.
     /// * `Error::Io` will be returned if the underlying storage object returned an I/O error.
     pub fn remove(&self, path: &str) -> Result<(), Error<IO::Error>> {
+        self.remove_internal(path, true)
+    }
+
+    /// Removes only a name, retaining the cluster chain for its live inode.
+    ///
+    /// The caller must detach the authoritative file/directory handle after
+    /// success and purge it on final eviction, while serializing this sequence
+    /// against IO and other namespace operations. Existing [`Self::remove`]
+    /// retains its no-live-handles contract.
+    ///
+    /// # Errors
+    ///
+    /// Returns lookup, nonempty-directory and storage errors, as [`Self::remove`].
+    pub fn remove_entry(&self, path: &str) -> Result<(), Error<IO::Error>> {
+        self.remove_internal(path, false)
+    }
+
+    fn remove_internal(&self, path: &str, should_free_data: bool) -> Result<(), Error<IO::Error>> {
         trace!("Dir::remove {}", path);
         // traverse path
         let (name, rest_opt) = split_path(path);
         if let Some(rest) = rest_opt {
             let e = self.find_entry(name, Some(true), None)?;
-            return e.to_dir().remove(rest);
+            return e.to_dir().remove_internal(rest, should_free_data);
         }
         // in case of directory check if it is empty
         let e = self.find_entry(name, None, None)?;
@@ -368,8 +463,10 @@ impl<'a, IO: ReadWriteSeek, TP: TimeProvider, OCC: OemCpConverter> Dir<'a, IO, T
             return Err(Error::DirectoryIsNotEmpty);
         }
         // free data
-        if let Some(n) = e.first_cluster() {
-            self.fs.free_cluster_chain(n)?;
+        if should_free_data {
+            if let Some(n) = e.first_cluster() {
+                self.fs.free_cluster_chain(n)?;
+            }
         }
         // free long and short name entries
         let mut stream = self.stream.clone();
@@ -402,29 +499,55 @@ impl<'a, IO: ReadWriteSeek, TP: TimeProvider, OCC: OemCpConverter> Dir<'a, IO, T
     /// * `Error::AlreadyExists` will be returned if `dst_path` points to an existing directory entry.
     /// * `Error::Io` will be returned if the underlying storage object returned an I/O error.
     pub fn rename(&self, src_path: &str, dst_dir: &Dir<IO, TP, OCC>, dst_path: &str) -> Result<(), Error<IO::Error>> {
+        self.rename_entry(src_path, dst_dir, dst_path).map(|_| ())
+    }
+
+    /// Renames an inode and returns its new directory association.
+    ///
+    /// A caller retaining an open file/directory must call its `flush_metadata`
+    /// first and attach the returned entry before releasing serialization. The
+    /// caller supplies one authoritative inode handle and reference tracking;
+    /// this method does not discover or update other handles. It does not replace
+    /// a destination: remove/detach that inode separately.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::InvalidInput`] across filesystems, [`Error::AlreadyExists`]
+    /// for a different existing destination, lookup failures, or storage errors.
+    /// This exposes the existing rename operation's result without changing
+    /// its storage ordering or error-recovery contract.
+    pub fn rename_entry<'b>(
+        &self,
+        src_path: &str,
+        dst_dir: &Dir<'b, IO, TP, OCC>,
+        dst_path: &str,
+    ) -> Result<DirEntry<'b, IO, TP, OCC>, Error<IO::Error>> {
+        if !core::ptr::eq(self.fs, dst_dir.fs) {
+            return Err(Error::InvalidInput);
+        }
         trace!("Dir::rename {} {}", src_path, dst_path);
         // traverse source path
         let (src_name, src_rest_opt) = split_path(src_path);
         if let Some(rest) = src_rest_opt {
             let e = self.find_entry(src_name, Some(true), None)?;
-            return e.to_dir().rename(rest, dst_dir, dst_path);
+            return e.to_dir().rename_entry(rest, dst_dir, dst_path);
         }
         // traverse destination path
         let (dst_name, dst_rest_opt) = split_path(dst_path);
         if let Some(rest) = dst_rest_opt {
             let e = dst_dir.find_entry(dst_name, Some(true), None)?;
-            return self.rename(src_path, &e.to_dir(), rest);
+            return self.rename_entry(src_path, &e.to_dir(), rest);
         }
         // move/rename file
         self.rename_internal(src_path, dst_dir, dst_path)
     }
 
-    fn rename_internal(
+    fn rename_internal<'b>(
         &self,
         src_name: &str,
-        dst_dir: &Dir<IO, TP, OCC>,
+        dst_dir: &Dir<'b, IO, TP, OCC>,
         dst_name: &str,
-    ) -> Result<(), Error<IO::Error>> {
+    ) -> Result<DirEntry<'b, IO, TP, OCC>, Error<IO::Error>> {
         trace!("Dir::rename_internal {} {}", src_name, dst_name);
         // find existing file
         let e = self.find_entry(src_name, None, None)?;
@@ -432,11 +555,11 @@ impl<'a, IO: ReadWriteSeek, TP: TimeProvider, OCC: OemCpConverter> Dir<'a, IO, T
         let r = dst_dir.check_for_existence(dst_name, None)?;
         let short_name = match r {
             // destination file already exist
-            DirEntryOrShortName::DirEntry(ref dst_e) => {
+            DirEntryOrShortName::DirEntry(dst_e) => {
                 // check if source and destination entry is the same
-                if e.is_same_entry(dst_e) {
+                if e.is_same_entry(&dst_e) {
                     // nothing to do
-                    return Ok(());
+                    return Ok(dst_e);
                 }
                 // destination file exists and it is not the same as source file - fail
                 return Err(Error::AlreadyExists);
@@ -457,8 +580,7 @@ impl<'a, IO: ReadWriteSeek, TP: TimeProvider, OCC: OemCpConverter> Dir<'a, IO, T
         }
         // save new directory entry
         let sfn_entry = e.data.renamed(short_name);
-        dst_dir.write_entry(dst_name, sfn_entry)?;
-        Ok(())
+        dst_dir.write_entry(dst_name, sfn_entry)
     }
 
     fn find_free_entries(&self, num_entries: u32) -> Result<DirRawStream<'a, IO, TP, OCC>, Error<IO::Error>> {

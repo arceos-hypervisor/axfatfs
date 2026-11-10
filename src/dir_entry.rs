@@ -470,6 +470,21 @@ impl DirEntryEditor {
         }
     }
 
+    pub(crate) fn position(&self) -> Option<u64> {
+        if self.pos == 0 {
+            None
+        } else {
+            Some(self.pos)
+        }
+    }
+
+    pub(crate) fn detach(&mut self) {
+        // No directory slot can be in the volume's boot sector. Like Linux
+        // FAT i_pos, zero means this inode no longer has a directory entry.
+        self.pos = 0;
+        self.dirty = false;
+    }
+
     pub(crate) fn inner(&self) -> &DirFileEntryData {
         &self.data
     }
@@ -514,7 +529,9 @@ impl DirEntryEditor {
 
     pub(crate) fn flush<IO: ReadWriteSeek, TP, OCC>(&mut self, fs: &FileSystem<IO, TP, OCC>) -> Result<(), IO::Error> {
         if self.dirty {
-            self.write(fs)?;
+            if self.pos != 0 {
+                self.write(fs)?;
+            }
             self.dirty = false;
         }
         Ok(())
@@ -610,8 +627,18 @@ impl<'a, IO: ReadWriteSeek, TP, OCC: OemCpConverter> DirEntry<'a, IO, TP, OCC> {
         self.data.first_cluster(self.fs.fat_type())
     }
 
-    fn editor(&self) -> DirEntryEditor {
+    pub(crate) fn editor(&self) -> DirEntryEditor {
         DirEntryEditor::new(self.data.clone(), self.entry_pos)
+    }
+
+    /// Returns the physical byte position of this entry's short-name slot.
+    #[must_use]
+    pub fn position(&self) -> u64 {
+        self.entry_pos
+    }
+
+    pub(crate) fn filesystem(&self) -> &FileSystem<IO, TP, OCC> {
+        self.fs
     }
 
     pub(crate) fn is_same_entry(&self, other: &DirEntry<IO, TP, OCC>) -> bool {
