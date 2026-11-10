@@ -1,6 +1,6 @@
 use core::convert::TryFrom;
 
-use crate::dir_entry::DirEntryEditor;
+use crate::dir_entry::{DirEntry, DirEntryEditor};
 use crate::error::Error;
 use crate::fs::{FileSystem, ReadWriteSeek};
 use crate::io::{IoBase, Read, Seek, SeekFrom, Write};
@@ -48,6 +48,72 @@ impl<'a, IO: ReadWriteSeek, TP, OCC> File<'a, IO, TP, OCC> {
             current_cluster: None, // cluster before first one
             offset: 0,
         }
+    }
+
+    /// Returns the associated directory slot, or None for a detached inode/root.
+    #[must_use]
+    pub fn entry_position(&self) -> Option<u64> {
+        self.entry.as_ref().and_then(DirEntryEditor::position)
+    }
+
+    /// Returns whether the file's name was removed while its data is still owned.
+    #[must_use]
+    pub fn is_detached(&self) -> bool {
+        self.entry.as_ref().map_or(false, |entry| entry.position().is_none())
+    }
+
+    /// Detaches directory metadata without discarding file size or cluster ownership.
+    ///
+    /// The caller must first remove the directory entry without freeing its data,
+    /// keep a single authoritative inode handle, and purge it on final eviction.
+    pub fn detach(&mut self) {
+        if let Some(entry) = self.entry.as_mut() {
+            entry.detach();
+        }
+    }
+
+    /// Binds an inode to the entry returned after metadata writeout and rename.
+    ///
+    /// Cursor and cluster traversal state remain valid. Call [`Self::flush_metadata`]
+    /// before renaming so the entry copied to its new slot is current.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::InvalidInput`] if the entry belongs to a different
+    /// filesystem, cluster chain or inode kind, or this is a root handle.
+    pub fn attach(&mut self, entry: &DirEntry<'_, IO, TP, OCC>) -> Result<(), Error<IO::Error>>
+    where
+        OCC: crate::OemCpConverter,
+    {
+        if !core::ptr::eq(self.fs, entry.filesystem())
+            || self.first_cluster != entry.first_cluster()
+            || self
+                .entry
+                .as_ref()
+                .map_or(true, |old| old.inner().is_dir() != entry.is_dir())
+        {
+            return Err(Error::InvalidInput);
+        }
+        self.entry = Some(entry.editor());
+        Ok(())
+    }
+
+    /// Reclaims a detached inode's cluster chain at final eviction.
+    ///
+    /// This must run only after its last user/mapping reference is gone. The
+    /// caller retains one authoritative inode handle and supplies the lifetime
+    /// and serialization policy. Drop alone never reclaims an open inode's data.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::InvalidInput`] for a linked inode or root, or propagates
+    /// storage errors while traversing or freeing the cluster chain.
+    pub fn purge(&mut self) -> Result<(), Error<IO::Error>> {
+        if !self.is_detached() {
+            return Err(Error::InvalidInput);
+        }
+        self.seek(SeekFrom::Start(0))?;
+        self.truncate()
     }
 
     /// Truncate file in current position.
@@ -138,7 +204,16 @@ impl<'a, IO: ReadWriteSeek, TP, OCC> File<'a, IO, TP, OCC> {
         }
     }
 
-    fn flush_dir_entry(&mut self) -> Result<(), Error<IO::Error>> {
+    /// Writes this inode's cached directory metadata without a final storage flush.
+    ///
+    /// Namespace operations that copy the entry must call this while serialized
+    /// with the handle. Detached inodes never write a directory slot. Use
+    /// [`Write::flush`] for persistence; underlying seeks may themselves flush IO.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Io`] if the storage fails to seek or write the entry.
+    pub fn flush_metadata(&mut self) -> Result<(), Error<IO::Error>> {
         if let Some(ref mut e) = self.entry {
             e.flush(self.fs)?;
         }
@@ -206,7 +281,7 @@ impl<'a, IO: ReadWriteSeek, TP, OCC> File<'a, IO, TP, OCC> {
     }
 
     fn flush(&mut self) -> Result<(), Error<IO::Error>> {
-        self.flush_dir_entry()?;
+        self.flush_metadata()?;
         let mut disk = self.fs.disk.borrow_mut();
         disk.flush()?;
         Ok(())
